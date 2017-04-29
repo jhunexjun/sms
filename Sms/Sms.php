@@ -17,7 +17,7 @@ class Sms {
 	private $_device = null;
 	private $_handle = null;
 
-	public $delayInSeconds = 5;
+	public $delayInSeconds = 7;
 
 	public function __construct() {
 		setlocale(LC_ALL, "en_US");
@@ -93,7 +93,7 @@ class Sms {
 			return false;
 		}
 
-		$this->_handle = fopen($this->_device, $mode);
+		$this->_handle = @fopen($this->_device, $mode);
 
 		if ($this->_handle !== false) {
 			stream_set_timeout($this->_handle, 20);
@@ -103,7 +103,9 @@ class Sms {
         }
 
         $this->_handle = null;
-        trigger_error("The device cannot be opened.", E_USER_WARNING);
+        // trigger_error("The device cannot be opened.", E_USER_WARNING);
+        throw new Exception("The device cannot be opened.", 1);
+        
 
         return false;
 	}
@@ -142,6 +144,18 @@ class Sms {
         }
 	}
 
+	private function matchBiddenResponses($deviceResponse) {
+		$forbiddenResponses = array ('BOOT','RSSI','MODE','SIMST','SRVST');
+
+		foreach($forbiddenResponses as $forbiddenResponse) {
+			preg_match("/$forbiddenResponse/", $deviceResponse, $match);
+			if ($match)
+				return false;
+			else
+				return true;
+		}
+	}
+
 	public function getDeviceResponse() {
 		sleep($this->delayInSeconds);	// I noticed this device has to wait for a couple of seconds.
 
@@ -149,7 +163,7 @@ class Sms {
 
 		do {
 			$response .= fread($this->_handle, 128);
-		} while (($i += 128) == strlen($response));
+		} while (($i += 128) == strlen($response) && $this->matchBiddenResponses($response));
 
 		return trim($response);	// we trim here because there are other characters in the response other than Alphabet like \n.
 	}
@@ -168,7 +182,6 @@ class Sms {
 			return false;
 
 		if ($this->sendCmd("AT+CMGF=1"))
-			// we use preg_match() because some device outputs periodic messages
 			if (preg_match("/OK/", $this->getDeviceResponse()))
 				if ($this->sendCmd("AT+CMGS=\"$number\""))
 					if (preg_match("/>/", $this->getDeviceResponse()))
